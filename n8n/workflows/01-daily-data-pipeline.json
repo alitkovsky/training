@@ -1,0 +1,270 @@
+{
+  "name": "Garmin Daily Data Pipeline",
+  "nodes": [
+    {
+      "id": "sticky-setup",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        -220
+      ],
+      "parameters": {
+        "content": "## Garmin Daily Data Pipeline\n\n**Prerequisites:**\n- `garmin-api` sidecar running at port 8765\n- `.env` contains `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`\n- Supabase schema `training` applied (supabase/schema.sql)\n\n**Schedule:** Every day at 08:05 local time\n\n**Flow:** Fetch \u2192 Normalize wellness \u2192 Upsert daily_wellness \u2192 Extract activities \u2192 Upsert activities",
+        "height": 200,
+        "width": 620,
+        "color": 4
+      }
+    },
+    {
+      "id": "schedule-trigger",
+      "name": "Daily 08:05",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        60
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 8 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "read-config",
+      "name": "Read Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        60
+      ],
+      "parameters": {
+        "jsCode": "const url = $env.SUPABASE_URL || '';\nconst key = $env.SUPABASE_SERVICE_KEY || '';\nif (!url || !key) {\n  throw new Error('SUPABASE_URL or SUPABASE_SERVICE_KEY not set in environment');\n}\nreturn [{ json: { supabase_url: url, supabase_key: key } }];"
+      }
+    },
+    {
+      "id": "fetch-garmin",
+      "name": "Fetch Garmin Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        60
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://garmin-api:8765/fetch",
+        "options": {
+          "timeout": 120000
+        },
+        "authentication": "none"
+      }
+    },
+    {
+      "id": "normalize-wellness",
+      "name": "Normalize Wellness",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        60
+      ],
+      "parameters": {
+        "jsCode": "const garmin = $input.first().json;\n\nconst hrv   = (garmin.hrv?.hrvSummary)    ?? {};\nconst sleep = (garmin.sleep?.dailySleepDTO) ?? {};\nconst stress = garmin.stress ?? {};\nconst bb    = (garmin.body_battery ?? [{}])[0] ?? {};\nconst spo2  = garmin.spo2 ?? {};\nconst resp  = garmin.respiration ?? {};\n\nconst totalSec = sleep.sleepTimeSeconds ?? 0;\nconst deepSec  = sleep.deepSleepSeconds ?? 0;\nconst remSec   = sleep.remSleepSeconds  ?? 0;\nconst lightSec = sleep.lightSleepSeconds ?? 0;\nconst awakeSec = sleep.awakeSleepSeconds ?? 0;\n\nconst bbValues = bb.bodyBatteryValuesArray ?? [];\nconst validBB = bbValues.map(([, v]) => v).filter(v => v != null);\nconst bbWake = validBB.length ? Math.max(...validBB) : null;\n\nconst sleepScore = (sleep.sleepScores?.overall?.value) ?? null;\n\nconst pct = (part, total) =>\n  total > 0 ? parseFloat((part / total * 100).toFixed(1)) : null;\n\nreturn [{\n  json: {\n    date: garmin.fetch_date,\n    hrv_weekly_avg:       hrv.weeklyAvg   ?? null,\n    hrv_last_night:       hrv.lastNightAvg ?? null,\n    hrv_status:           hrv.status       ?? null,\n    hrv_feedback:         hrv.feedbackPhrase ?? null,\n    sleep_duration_h:     totalSec ? parseFloat((totalSec / 3600).toFixed(2)) : null,\n    sleep_score:          sleepScore,\n    sleep_deep_pct:       pct(deepSec,  totalSec),\n    sleep_rem_pct:        pct(remSec,   totalSec),\n    sleep_light_pct:      pct(lightSec, totalSec),\n    sleep_awake_pct:      pct(awakeSec, totalSec),\n    body_battery_wake:    bbWake,\n    body_battery_sleep_gain: bb.charged ?? null,\n    resting_hr:           garmin.sleep?.restingHeartRate ?? null,\n    stress_avg:           stress.avgStressLevel ?? null,\n    stress_max:           stress.maxStressLevel ?? null,\n    spo2_avg:             spo2.averageSpO2 ?? spo2.avgSleepSpO2 ?? null,\n    spo2_min:             spo2.lowestSpO2  ?? null,\n    respiration_avg:      resp.avgSleepRespirationValue ?? null,\n    raw_json:             garmin\n  }\n}];"
+      }
+    },
+    {
+      "id": "upsert-wellness",
+      "name": "Upsert daily_wellness",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        60
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Read Config').first().json.supabase_url }}/rest/v1/daily_wellness?on_conflict=date",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Read Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Read Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Profile",
+              "value": "training"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify([$json]) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "extract-activities",
+      "name": "Extract Activities",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        60
+      ],
+      "parameters": {
+        "jsCode": "const garmin = $('Fetch Garmin Data').first().json;\nconst activities = garmin.activities ?? [];\nconst fetchDate  = garmin.fetch_date;\n\nif (activities.length === 0) {\n  return [{ json: { activities: [] } }];\n}\n\nconst mapped = activities.map(a => {\n  const zones = [1,2,3,4,5].map(z => a[`hrTimeInZone_${z}`] ?? 0);\n  const totalZone = zones.reduce((s, v) => s + v, 0);\n  const zpct = i => totalZone > 0\n    ? parseFloat((zones[i] / totalZone * 100).toFixed(1))\n    : null;\n\n  const speed = a.averageSpeed ?? 0;\n  const startDate = (a.startTimeLocal ?? fetchDate).slice(0, 10);\n\n  return {\n    garmin_id:               a.activityId,\n    date:                    startDate,\n    activity_name:           a.activityName  ?? null,\n    activity_type:           a.activityType?.typeKey ?? null,\n    sport_type:              String(a.activityType?.parentTypeId ?? ''),\n    duration_sec:            a.duration ? Math.round(a.duration) : null,\n    distance_m:              a.distance ?? null,\n    elevation_gain_m:        a.elevationGain ?? null,\n    avg_speed_kmh:           speed ? parseFloat((speed * 3.6).toFixed(2)) : null,\n    avg_pace_sec_per_km:     speed > 0 ? Math.round(1000 / speed) : null,\n    avg_hr:                  a.averageHR != null ? Math.round(a.averageHR) : null,\n    max_hr:                  a.maxHR != null ? Math.round(a.maxHR) : null,\n    hr_zone_1_pct:           zpct(0),\n    hr_zone_2_pct:           zpct(1),\n    hr_zone_3_pct:           zpct(2),\n    hr_zone_4_pct:           zpct(3),\n    hr_zone_5_pct:           zpct(4),\n    training_stress_score:   a.trainingStressScore ?? null,\n    aerobic_training_effect: a.aerobicTrainingEffect ?? null,\n    anaerobic_training_effect: a.anaerobicTrainingEffect ?? null,\n    training_load_abs:       a.activityTrainingLoad ?? null,\n    avg_power_w:             a.avgPower ? Math.round(a.avgPower) : null,\n    avg_cadence:             (a.averageRunningCadenceInStepsPerMinute ?? a.avgBikingCadenceInRevPerMinute) != null\n                               ? Math.round(a.averageRunningCadenceInStepsPerMinute ?? a.avgBikingCadenceInRevPerMinute)\n                               : null,\n    calories:                a.calories != null ? Math.round(a.calories) : null,\n    raw_json:                a\n  };\n});\n\nreturn [{ json: { activities: mapped } }];"
+      }
+    },
+    {
+      "id": "upsert-activities",
+      "name": "Upsert Activities",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        60
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Read Config').first().json.supabase_url }}/rest/v1/activities?on_conflict=garmin_id",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Read Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Read Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Profile",
+              "value": "training"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.activities) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Daily 08:05": {
+      "main": [
+        [
+          {
+            "node": "Read Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Garmin Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Garmin Data": {
+      "main": [
+        [
+          {
+            "node": "Normalize Wellness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Wellness": {
+      "main": [
+        [
+          {
+            "node": "Upsert daily_wellness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert daily_wellness": {
+      "main": [
+        [
+          {
+            "node": "Extract Activities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Activities": {
+      "main": [
+        [
+          {
+            "node": "Upsert Activities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    "garmin",
+    "daily"
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-06-17T00:00:00.000Z",
+  "versionId": "01-daily-data-pipeline-v1"
+}

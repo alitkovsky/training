@@ -80,7 +80,6 @@ def main():
         "respiration":      safe_get(client.get_respiration_data,   today),
         "activities":       safe_get(client.get_activities,         0, 5),  # last 5
         "training_status":  safe_get(client.get_training_status,   today),
-        "training_load":    safe_get(client.get_training_load,     today),
     }
 
     print(json.dumps(result))

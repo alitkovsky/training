@@ -111,7 +111,7 @@ CREATE TABLE training.daily_reports (
     weekly_tss      NUMERIC(8,1),    -- rolling 7-day TSS
 
     -- LLM outputs
-    model_used      TEXT DEFAULT 'claude-sonnet-agy',  -- 'claude-sonnet-agy', etc.
+    model_used      TEXT DEFAULT 'claude-opus-4-8',  -- 'claude-sonnet-agy', etc.
     biometric_analysis TEXT,         -- full analysis paragraph
     plan_comparison TEXT,            -- how actual compares to planned
     suggested_adjustment TEXT,       -- specific recommendation for today
@@ -153,7 +153,7 @@ CREATE TABLE training.weekly_reviews (
     avg_body_battery    NUMERIC(4,1),
 
     -- LLM analysis
-    model_used          TEXT DEFAULT 'claude-sonnet-agy',
+    model_used          TEXT DEFAULT 'claude-opus-4-8',
     week_summary        TEXT,
     training_effectiveness TEXT,
     plan_adjustment_recommendation TEXT,
@@ -223,10 +223,29 @@ FROM training.activities
 ORDER BY date;
 
 -- ============================================================
+-- PERMISSIONS (run after CREATE TABLE statements)
+-- ============================================================
+-- Grant PostgREST roles (anon, authenticated, service_role) access to this schema.
+-- Required for the Supabase REST API and Python supabase-py client to work.
+
+GRANT USAGE ON SCHEMA training TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA training TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA training TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA training TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA training
+    GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA training
+    GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA training
+    GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+
+-- ============================================================
 -- NOTES
 -- ============================================================
 -- After running this schema:
--- 1. Go to Supabase → Project Settings → Data API → Extra schemas → add 'training'
+-- 1. Go to Supabase → Project Settings → API → Extra schemas → add 'training'
+--    (this exposes the schema via PostgREST — required even with correct grants)
 -- 2. Test with: SELECT * FROM training.daily_wellness LIMIT 1;
 -- 3. The v_acwr view becomes reliable after ~28 days of activity data.
 --    Use the acwr IS NOT NULL gate in n8n to skip flagging during warmup period.
