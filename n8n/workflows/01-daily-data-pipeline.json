@@ -137,7 +137,7 @@
         60
       ],
       "parameters": {
-        "jsCode": "const garmin = $('Fetch Garmin Data').first().json;\nconst activities = garmin.activities ?? [];\nconst fetchDate  = garmin.fetch_date;\n\nif (activities.length === 0) {\n  return [{ json: { activities: [] } }];\n}\n\nconst mapped = activities.map(a => {\n  const zones = [1,2,3,4,5].map(z => a[`hrTimeInZone_${z}`] ?? 0);\n  const totalZone = zones.reduce((s, v) => s + v, 0);\n  const zpct = i => totalZone > 0\n    ? parseFloat((zones[i] / totalZone * 100).toFixed(1))\n    : null;\n\n  const speed = a.averageSpeed ?? 0;\n  const startDate = (a.startTimeLocal ?? fetchDate).slice(0, 10);\n\n  return {\n    garmin_id:               a.activityId,\n    date:                    startDate,\n    activity_name:           a.activityName  ?? null,\n    activity_type:           a.activityType?.typeKey ?? null,\n    sport_type:              String(a.activityType?.parentTypeId ?? ''),\n    duration_sec:            a.duration ? Math.round(a.duration) : null,\n    distance_m:              a.distance ?? null,\n    elevation_gain_m:        a.elevationGain ?? null,\n    avg_speed_kmh:           speed ? parseFloat((speed * 3.6).toFixed(2)) : null,\n    avg_pace_sec_per_km:     speed > 0 ? Math.round(1000 / speed) : null,\n    avg_hr:                  a.averageHR != null ? Math.round(a.averageHR) : null,\n    max_hr:                  a.maxHR != null ? Math.round(a.maxHR) : null,\n    hr_zone_1_pct:           zpct(0),\n    hr_zone_2_pct:           zpct(1),\n    hr_zone_3_pct:           zpct(2),\n    hr_zone_4_pct:           zpct(3),\n    hr_zone_5_pct:           zpct(4),\n    training_stress_score:   a.trainingStressScore ?? null,\n    aerobic_training_effect: a.aerobicTrainingEffect ?? null,\n    anaerobic_training_effect: a.anaerobicTrainingEffect ?? null,\n    training_load_abs:       a.activityTrainingLoad ?? null,\n    avg_power_w:             a.avgPower ? Math.round(a.avgPower) : null,\n    avg_cadence:             (a.averageRunningCadenceInStepsPerMinute ?? a.avgBikingCadenceInRevPerMinute) != null\n                               ? Math.round(a.averageRunningCadenceInStepsPerMinute ?? a.avgBikingCadenceInRevPerMinute)\n                               : null,\n    calories:                a.calories != null ? Math.round(a.calories) : null,\n    raw_json:                a\n  };\n});\n\nreturn [{ json: { activities: mapped } }];"
+        "jsCode": "const garmin = $('Fetch Garmin Data').first().json;\nconst activities = garmin.activities ?? [];\nconst fetchDate  = garmin.fetch_date;\n\nif (activities.length === 0) {\n  return [{ json: { activities: [] } }];\n}\n\nconst mapped = activities.map(a => {\n  const zones = [1,2,3,4,5].map(z => a[`hrTimeInZone_${z}`] ?? 0);\n  const totalZone = zones.reduce((s, v) => s + v, 0);\n  const zpct = i => totalZone > 0\n    ? parseFloat((zones[i] / totalZone * 100).toFixed(1))\n    : null;\n\n  const speed = a.averageSpeed ?? 0;\n  const startDate = (a.startTimeLocal ?? fetchDate).slice(0, 10);\n\n  return {\n    garmin_id:               a.activityId,\n    date:                    startDate,\n    activity_name:           a.activityName  ?? null,\n    activity_type:           a.activityType?.typeKey ?? null,\n    sport_type:              String(a.activityType?.parentTypeId ?? ''),\n    duration_sec:            a.duration ? Math.round(a.duration) : null,\n    distance_m:              a.distance ?? null,\n    elevation_gain_m:        a.elevationGain ?? null,\n    avg_speed_kmh:           speed ? parseFloat((speed * 3.6).toFixed(2)) : null,\n    avg_pace_sec_per_km:     speed > 0 ? Math.round(1000 / speed) : null,\n    avg_hr:                  a.averageHR != null ? Math.round(a.averageHR) : null,\n    max_hr:                  a.maxHR != null ? Math.round(a.maxHR) : null,\n    hr_zone_1_pct:           zpct(0),\n    hr_zone_2_pct:           zpct(1),\n    hr_zone_3_pct:           zpct(2),\n    hr_zone_4_pct:           zpct(3),\n    hr_zone_5_pct:           zpct(4),\n    training_stress_score:   a.trainingStressScore ?? null,\n    aerobic_training_effect: a.aerobicTrainingEffect ?? null,\n    anaerobic_training_effect: a.anaerobicTrainingEffect ?? null,\n    training_load_abs:       a.activityTrainingLoad ?? null,\n    avg_power_w:             a.avgPower ? Math.round(a.avgPower) : null,\n    avg_cadence:             (a.averageRunningCadenceInStepsPerMinute ?? a.avgBikingCadenceInRevPerMinute) != null\n                               ? Math.round(a.averageRunningCadenceInStepsPerMinute ?? a.avgBikingCadenceInRevPerMinute)\n                               : null,\n    calories:                a.calories != null ? Math.round(a.calories) : null,\n    temp_min_c:              a.minTemperature ?? null,\n    temp_max_c:              a.maxTemperature ?? null,\n    location_name:           a.locationName ?? null,\n    start_lat:               a.startLatitude ?? null,\n    start_lng:               a.startLongitude ?? null,\n    raw_json:                a\n  };\n});\n\nreturn [{ json: { activities: mapped } }];"
       }
     },
     {
@@ -184,74 +184,137 @@
         "body": "={{ JSON.stringify($json.activities) }}",
         "options": {}
       }
+    },
+    {
+      "id": "fetch-weather",
+      "name": "Fetch Weather Forecast",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 260],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.open-meteo.com/v1/forecast",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "latitude",  "value": "52.336"},
+            {"name": "longitude", "value": "8.747"},
+            {"name": "daily",     "value": "temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,uv_index_max,weathercode"},
+            {"name": "timezone",  "value": "Europe/Berlin"},
+            {"name": "forecast_days", "value": "7"}
+          ]
+        },
+        "options": {"timeout": 15000}
+      }
+    },
+    {
+      "id": "process-weather",
+      "name": "Process Weather Days",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 260],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst daily = data.daily;\n\nconst wmoDesc = (code) => {\n  if (code === 0) return 'Clear sky';\n  if (code <= 3) return 'Partly cloudy';\n  if (code <= 48) return 'Fog';\n  if (code <= 57) return 'Drizzle';\n  if (code <= 67) return 'Rain';\n  if (code <= 77) return 'Snow';\n  if (code <= 82) return 'Rain showers';\n  if (code <= 86) return 'Snow showers';\n  return 'Thunderstorm';\n};\n\nconst rows = daily.time.map((date, i) => ({\n  date,\n  fetched_at:             new Date().toISOString(),\n  temp_max_c:             daily.temperature_2m_max[i],\n  temp_min_c:             daily.temperature_2m_min[i],\n  feels_like_max_c:       daily.apparent_temperature_max[i],\n  feels_like_min_c:       daily.apparent_temperature_min[i],\n  precipitation_mm:       daily.precipitation_sum[i],\n  precipitation_prob_pct: daily.precipitation_probability_max[i],\n  wind_speed_kmh:         daily.wind_speed_10m_max[i],\n  wind_direction_deg:     daily.wind_direction_10m_dominant[i],\n  uv_index_max:           daily.uv_index_max[i],\n  weather_code:           daily.weathercode[i],\n  weather_description:    wmoDesc(daily.weathercode[i])\n}));\n\nreturn [{ json: { rows } }];"
+      }
+    },
+    {
+      "id": "upsert-weather",
+      "name": "Upsert Weather Forecast",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 260],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Read Config').first().json.supabase_url }}/rest/v1/weather_forecast?on_conflict=date",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey",         "value": "={{ $('Read Config').first().json.supabase_key }}"},
+            {"name": "Authorization",  "value": "={{ 'Bearer ' + $('Read Config').first().json.supabase_key }}"},
+            {"name": "Content-Type",   "value": "application/json"},
+            {"name": "Content-Profile","value": "training"},
+            {"name": "Prefer",         "value": "resolution=merge-duplicates"}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.rows) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "extract-gear",
+      "name": "Extract Gear",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 60],
+      "parameters": {
+        "jsCode": "const garmin = $('Fetch Garmin Data').first().json;\nconst gear = garmin.gear ?? {};\n\nconst rows = [];\nfor (const [activityId, gearList] of Object.entries(gear)) {\n  if (!Array.isArray(gearList)) continue;\n  for (const g of gearList) {\n    const pk = g.gearPk ?? g.uuid ?? null;\n    if (!pk) continue;\n    rows.push({\n      garmin_id:    parseInt(activityId),\n      gear_pk:      String(pk),\n      gear_type:    g.gearTypeName ?? g.gearType ?? null,\n      display_name: g.displayName ?? g.customMakeModel ?? null\n    });\n  }\n}\n\nif (rows.length === 0) {\n  return [{ json: { gear_rows: [] } }];\n}\nreturn [{ json: { gear_rows: rows } }];"
+      }
+    },
+    {
+      "id": "upsert-gear",
+      "name": "Upsert Gear",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Read Config').first().json.supabase_url }}/rest/v1/activity_gear?on_conflict=garmin_id%2Cgear_pk",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey",         "value": "={{ $('Read Config').first().json.supabase_key }}"},
+            {"name": "Authorization",  "value": "={{ 'Bearer ' + $('Read Config').first().json.supabase_key }}"},
+            {"name": "Content-Type",   "value": "application/json"},
+            {"name": "Content-Profile","value": "training"},
+            {"name": "Prefer",         "value": "resolution=merge-duplicates"}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.gear_rows) }}",
+        "options": {}
+      }
     }
   ],
   "connections": {
     "Daily 08:05": {
-      "main": [
-        [
-          {
-            "node": "Read Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Read Config", "type": "main", "index": 0}]]
     },
     "Read Config": {
-      "main": [
-        [
-          {
-            "node": "Fetch Garmin Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {"node": "Fetch Garmin Data",       "type": "main", "index": 0},
+        {"node": "Fetch Weather Forecast",  "type": "main", "index": 0}
+      ]]
     },
     "Fetch Garmin Data": {
-      "main": [
-        [
-          {
-            "node": "Normalize Wellness",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Normalize Wellness", "type": "main", "index": 0}]]
     },
     "Normalize Wellness": {
-      "main": [
-        [
-          {
-            "node": "Upsert daily_wellness",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Upsert daily_wellness", "type": "main", "index": 0}]]
     },
     "Upsert daily_wellness": {
-      "main": [
-        [
-          {
-            "node": "Extract Activities",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Extract Activities", "type": "main", "index": 0}]]
     },
     "Extract Activities": {
-      "main": [
-        [
-          {
-            "node": "Upsert Activities",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Upsert Activities", "type": "main", "index": 0}]]
+    },
+    "Upsert Activities": {
+      "main": [[{"node": "Extract Gear", "type": "main", "index": 0}]]
+    },
+    "Extract Gear": {
+      "main": [[{"node": "Upsert Gear", "type": "main", "index": 0}]]
+    },
+    "Fetch Weather Forecast": {
+      "main": [[{"node": "Process Weather Days", "type": "main", "index": 0}]]
+    },
+    "Process Weather Days": {
+      "main": [[{"node": "Upsert Weather Forecast", "type": "main", "index": 0}]]
     }
   },
   "settings": {

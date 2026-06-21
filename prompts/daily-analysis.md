@@ -51,7 +51,27 @@ ORDER BY date;
 SELECT acwr, acute_7d, chronic_28d FROM training.v_acwr WHERE date = CURRENT_DATE;
 ```
 
-**Step 7 — Read the training plan.** Read `training/plan.md` to find today's planned session.
+**Step 7 — Fetch today's weather forecast.**
+```sql
+SELECT temp_max_c, feels_like_max_c, precipitation_prob_pct,
+       wind_speed_kmh, uv_index_max, weather_description
+FROM training.weather_forecast WHERE date = CURRENT_DATE;
+```
+→ If available, factor heat/rain/wind into the recommendation. `feels_like_max_c > 28` = heat flag.
+   `uv_index_max >= 8` = high UV warning. Missing row = no forecast yet (skip silently).
+
+**Step 8 — Check upcoming races.**
+```sql
+SELECT name, date, distance_m, race_type, goal_time_sec,
+       date - CURRENT_DATE AS days_out
+FROM training.races
+WHERE date >= CURRENT_DATE
+ORDER BY date
+LIMIT 3;
+```
+→ If a race is within 14 days, that overrides the standard recommendation (taper logic).
+
+**Step 9 — Read the training plan.** Read `training/plan.md` to find today's planned session.
 
 ---
 
@@ -76,12 +96,16 @@ Interpret today's data. For each metric, state the value and what it means in co
 - **Body Battery:** [value]/100 on waking — [interpretation]
 - **Resting HR:** [value] bpm — [interpretation]
 - **ACWR:** [value] (acute 7d TSS / chronic 28d TSS) — [safe / elevated / high risk]
+- **Weather:** [temp_max_c]°C / feels like [feels_like_max_c]°C, [weather_description], UV [uv_index_max] — [heat/wind/rain impact]
 
 Flag explicitly if:
 - ACWR > 1.3 (injury risk zone)
 - HRV drop > 10% below 7-day average
 - Body Battery < 30 on waking
 - Sleep < 6 hours or score < 60
+- feels_like_max_c > 28°C (heat stress — reduce intensity, shift to early morning)
+- uv_index_max >= 8 (high UV — early morning or indoor session recommended)
+- Race within 14 days (taper flag)
 
 ### 2. PLAN COMPARISON
 
@@ -100,7 +124,8 @@ state the modified session concretely (e.g., "Replace tempo with 40 min Z1 jog, 
 List any flags as bullet points. Write "None — all markers normal." if everything is fine.
 
 Possible flags: `high_acwr`, `low_hrv`, `poor_sleep`, `low_body_battery`,
-`elevated_resting_hr`, `high_stress`, `low_spo2`, `insufficient_acwr_data`
+`elevated_resting_hr`, `high_stress`, `low_spo2`, `insufficient_acwr_data`,
+`heat_stress`, `high_uv`, `race_taper`
 
 ---
 

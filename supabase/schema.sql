@@ -93,6 +93,13 @@ CREATE TABLE training.activities (
     planned_session TEXT,   -- what the plan called for (filled by n8n logic)
     compliance_score INTEGER, -- 0-100, computed later
 
+    -- Weather & location (from Garmin activity data)
+    temp_min_c      NUMERIC(4,1),
+    temp_max_c      NUMERIC(4,1),
+    location_name   TEXT,
+    start_lat       NUMERIC(9,6),
+    start_lng       NUMERIC(9,6),
+
     raw_json        JSONB
 );
 
@@ -165,6 +172,60 @@ CREATE TABLE training.weekly_reviews (
 
     -- Full review markdown
     review_md           TEXT
+);
+
+-- ============================================================
+-- TABLE: training.races
+-- Planned and completed races / events
+-- ============================================================
+CREATE TABLE training.races (
+    id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name            TEXT NOT NULL,
+    date            DATE NOT NULL UNIQUE,
+    distance_m      INTEGER NOT NULL,
+    race_type       TEXT,            -- 'marathon', 'half_marathon', '10k', '5k', 'triathlon'
+    location        TEXT,
+    goal_time_sec   INTEGER,         -- target finish time in seconds
+    registered      BOOLEAN DEFAULT true,
+    result_time_sec INTEGER,         -- filled after race
+    result_notes    TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- TABLE: training.weather_forecast
+-- 7-day daily forecast refreshed each morning by n8n (Open-Meteo)
+-- Home coordinates: 52.336°N 8.747°E (Hille, DE)
+-- ============================================================
+CREATE TABLE training.weather_forecast (
+    id                      UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    date                    DATE NOT NULL UNIQUE,
+    fetched_at              TIMESTAMPTZ DEFAULT NOW(),
+    temp_max_c              NUMERIC(4,1),
+    temp_min_c              NUMERIC(4,1),
+    feels_like_max_c        NUMERIC(4,1),
+    feels_like_min_c        NUMERIC(4,1),
+    precipitation_mm        NUMERIC(5,1),
+    precipitation_prob_pct  INTEGER,
+    wind_speed_kmh          NUMERIC(5,1),
+    wind_direction_deg      INTEGER,
+    uv_index_max            NUMERIC(3,1),
+    weather_code            INTEGER,        -- WMO weather interpretation code
+    weather_description     TEXT
+);
+
+-- ============================================================
+-- TABLE: training.activity_gear
+-- Gear (shoes, bike) used per activity from Garmin Connect
+-- ============================================================
+CREATE TABLE training.activity_gear (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    garmin_id    BIGINT NOT NULL REFERENCES training.activities(garmin_id) ON DELETE CASCADE,
+    gear_pk      TEXT NOT NULL,
+    gear_type    TEXT,            -- 'SHOES', 'BIKE', etc.
+    display_name TEXT,
+    created_at   TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(garmin_id, gear_pk)
 );
 
 -- ============================================================

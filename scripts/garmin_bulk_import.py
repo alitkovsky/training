@@ -144,7 +144,12 @@ def normalize_activity(a: dict, fallback_date: str) -> dict:
             a.get("averageRunningCadenceInStepsPerMinute")
             or a.get("avgBikingCadenceInRevPerMinute")
         ) if (a.get("averageRunningCadenceInStepsPerMinute") or a.get("avgBikingCadenceInRevPerMinute")) else None,
-        "calories": round(a["calories"]) if a.get("calories") is not None else None,
+        "calories":    round(a["calories"]) if a.get("calories") is not None else None,
+        "temp_min_c":  a.get("minTemperature"),
+        "temp_max_c":  a.get("maxTemperature"),
+        "location_name": a.get("locationName"),
+        "start_lat":   a.get("startLatitude"),
+        "start_lng":   a.get("startLongitude"),
         "raw_json": a,
     }
 
@@ -247,7 +252,8 @@ def main():
                 for m in mapped:
                     print(f"  [DRY] activity: {m.get('activity_type')} "
                           f"{round((m.get('distance_m') or 0)/1000,1)}km "
-                          f"tss={m.get('training_stress_score')}")
+                          f"tss={m.get('training_stress_score')} "
+                          f"temp={m.get('temp_min_c')}-{m.get('temp_max_c')}°C")
             else:
                 rows = [
                     {**m, "raw_json": json.loads(json.dumps(m["raw_json"], default=str))}
@@ -255,6 +261,31 @@ def main():
                 ]
                 sb.schema("training").table("activities").upsert(rows, on_conflict="garmin_id").execute()
                 print(f"  [OK] {len(rows)} activities upserted")
+
+                # Fetch and upsert gear for each activity
+                for a in day_activities:
+                    aid = a.get("activityId")
+                    if not aid:
+                        continue
+                    gear_list = safe_get(client.get_activity_gear, str(aid), label=f"gear_{aid}")
+                    if not gear_list:
+                        continue
+                    gear_rows = [
+                        {
+                            "garmin_id":    aid,
+                            "gear_pk":      g.get("gearPk") or g.get("uuid") or str(g.get("gearId", "")),
+                            "gear_type":    g.get("gearTypeName") or g.get("gearType"),
+                            "display_name": g.get("displayName") or g.get("customMakeModel"),
+                        }
+                        for g in gear_list
+                        if g.get("gearPk") or g.get("uuid")
+                    ]
+                    if gear_rows:
+                        sb.schema("training").table("activity_gear").upsert(
+                            gear_rows, on_conflict="garmin_id,gear_pk"
+                        ).execute()
+                        print(f"  [OK] gear: {[g['display_name'] for g in gear_rows]}")
+
             stats["activities_ok"] += len(day_activities)
 
         current += timedelta(days=1)

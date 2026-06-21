@@ -69,6 +69,16 @@ def main():
         print(f"[ERROR] {e}", file=sys.stderr)
         return 1
 
+    activities = safe_get(client.get_activities, 0, 5) or []
+
+    gear: dict = {}
+    for act in activities:
+        aid = act.get("activityId")
+        if aid:
+            g = safe_get(client.get_activity_gear, str(aid))
+            if g:
+                gear[str(aid)] = g
+
     result = {
         "fetch_date":       today,
         "hrv":              safe_get(client.get_hrv_data,           today),
@@ -78,7 +88,8 @@ def main():
         "resting_hr":       safe_get(client.get_rhr_day,            today),
         "spo2":             safe_get(client.get_spo2_data,          today),
         "respiration":      safe_get(client.get_respiration_data,   today),
-        "activities":       safe_get(client.get_activities,         0, 5),  # last 5
+        "activities":       activities,
+        "gear":             gear,
         "training_status":  safe_get(client.get_training_status,   today),
     }
 
