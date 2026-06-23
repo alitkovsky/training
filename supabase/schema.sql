@@ -263,22 +263,22 @@ CREATE INDEX idx_weekly_reviews_week ON training.weekly_reviews(week_start DESC)
 CREATE VIEW training.v_acwr AS
 SELECT
     date,
-    AVG(training_stress_score)
+    AVG(COALESCE(training_stress_score, training_load_abs))
         OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
         AS acute_7d,
-    AVG(training_stress_score)
+    AVG(COALESCE(training_stress_score, training_load_abs))
         OVER (ORDER BY date ROWS BETWEEN 27 PRECEDING AND CURRENT ROW)
         AS chronic_28d,
     CASE
-        WHEN AVG(training_stress_score)
+        WHEN AVG(COALESCE(training_stress_score, training_load_abs))
             OVER (ORDER BY date ROWS BETWEEN 27 PRECEDING AND CURRENT ROW) >= 10
         THEN ROUND(
-            AVG(training_stress_score)
+            AVG(COALESCE(training_stress_score, training_load_abs))
                 OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) /
-            AVG(training_stress_score)
+            AVG(COALESCE(training_stress_score, training_load_abs))
                 OVER (ORDER BY date ROWS BETWEEN 27 PRECEDING AND CURRENT ROW),
             2)
-        ELSE NULL  -- insufficient data gate: < 28 days or chronic TSS too low
+        ELSE NULL  -- insufficient data gate: < 28 days or chronic load too low
     END AS acwr
 FROM training.activities
 ORDER BY date;
