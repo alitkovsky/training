@@ -1,9 +1,19 @@
 # Ephemeral daily data (written fresh each morning by n8n)
 data/today.json
 
+# Daily coaching reports (contain biometric data — kept in Supabase, not git)
+reports/*.md
+
 # Credentials — never commit
 scripts/.env
 .env
+
+# Issue screenshots and diagnostics (local only)
+issues/
+*.png
+*.jpg
+*.pdf
+first-phase-status.md
 
 # Python
 __pycache__/
