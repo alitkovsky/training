@@ -260,7 +260,7 @@ CREATE INDEX idx_weekly_reviews_week ON training.weekly_reviews(week_start DESC)
 -- NOTE: Requires minimum 28 days of data to be meaningful.
 --       Gate: skip ACWR calculation if chronic_28d < 10 TSS/day.
 -- ============================================================
-CREATE VIEW training.v_acwr AS
+CREATE VIEW training.v_acwr WITH (security_invoker = true) AS
 SELECT
     date,
     AVG(COALESCE(training_stress_score, training_load_abs))
@@ -300,6 +300,32 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA training
     GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA training
     GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+
+-- ============================================================
+-- ROW LEVEL SECURITY
+-- ============================================================
+-- All training tables are locked to service_role only.
+-- The anon/authenticated roles have no access (no RLS policies for them).
+-- service_role (used by n8n and scripts) bypasses RLS automatically —
+-- the explicit policies below document intent and silence Supabase advisors.
+
+ALTER TABLE training.daily_wellness    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training.activities        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training.daily_reports     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training.weekly_reviews    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training.workouts          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training.races             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training.weather_forecast  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training.activity_gear     ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all" ON training.daily_wellness    TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON training.activities        TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON training.daily_reports     TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON training.weekly_reviews    TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON training.workouts          TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON training.races             TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON training.weather_forecast  TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON training.activity_gear     TO service_role USING (true) WITH CHECK (true);
 
 -- ============================================================
 -- NOTES
