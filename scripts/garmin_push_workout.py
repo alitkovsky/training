@@ -45,17 +45,17 @@ def pace_to_ms(sec_per_km: int) -> float:
 
 # ── step builders ──────────────────────────────────────────────────────────────
 
+_STEP_DISPLAY_ORDER = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8}
+
+
 def step_time_hr(order, kind_id, kind_key, duration_sec, hr_low, hr_high):
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
-        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key},
-        "endCondition": {
-            "conditionTypeId": 2,
-            "conditionTypeKey": "time",
-            "conditionValue": str(int(duration_sec)),
-        },
-        "targetType": {"workoutTargetTypeId": 2, "workoutTargetTypeKey": "heart_rate_zone"},
+        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key, "displayOrder": _STEP_DISPLAY_ORDER[kind_id]},
+        "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time", "displayOrder": 2, "displayable": True},
+        "endConditionValue": float(duration_sec),
+        "targetType": {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 1},
         "targetValueOne": hr_low,
         "targetValueTwo": hr_high,
     }
@@ -65,13 +65,10 @@ def step_dist_hr(order, kind_id, kind_key, distance_m, hr_low, hr_high):
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
-        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key},
-        "endCondition": {
-            "conditionTypeId": 3,
-            "conditionTypeKey": "distance",
-            "conditionValue": str(int(distance_m)),
-        },
-        "targetType": {"workoutTargetTypeId": 2, "workoutTargetTypeKey": "heart_rate_zone"},
+        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key, "displayOrder": _STEP_DISPLAY_ORDER[kind_id]},
+        "endCondition": {"conditionTypeId": 3, "conditionTypeKey": "distance", "displayOrder": 2, "displayable": True},
+        "endConditionValue": float(distance_m),
+        "targetType": {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 1},
         "targetValueOne": hr_low,
         "targetValueTwo": hr_high,
     }
@@ -81,15 +78,12 @@ def step_dist_pace(order, kind_id, kind_key, distance_m, pace_slow_sec_km, pace_
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
-        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key},
-        "endCondition": {
-            "conditionTypeId": 3,
-            "conditionTypeKey": "distance",
-            "conditionValue": str(int(distance_m)),
-        },
-        "targetType": {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "pace.zone"},
-        "targetValueOne": pace_to_ms(pace_slow_sec_km),  # slower = lower m/s
-        "targetValueTwo": pace_to_ms(pace_fast_sec_km),  # faster = higher m/s
+        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key, "displayOrder": _STEP_DISPLAY_ORDER[kind_id]},
+        "endCondition": {"conditionTypeId": 3, "conditionTypeKey": "distance", "displayOrder": 2, "displayable": True},
+        "endConditionValue": float(distance_m),
+        "targetType": {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone", "displayOrder": 1},
+        "targetValueOne": pace_to_ms(pace_slow_sec_km),  # slower bound = lower m/s
+        "targetValueTwo": pace_to_ms(pace_fast_sec_km),  # faster bound = higher m/s
     }
 
 
@@ -97,13 +91,10 @@ def step_time_pace(order, kind_id, kind_key, duration_sec, pace_slow_sec_km, pac
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
-        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key},
-        "endCondition": {
-            "conditionTypeId": 2,
-            "conditionTypeKey": "time",
-            "conditionValue": str(int(duration_sec)),
-        },
-        "targetType": {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "pace.zone"},
+        "stepType": {"stepTypeId": kind_id, "stepTypeKey": kind_key, "displayOrder": _STEP_DISPLAY_ORDER[kind_id]},
+        "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time", "displayOrder": 2, "displayable": True},
+        "endConditionValue": float(duration_sec),
+        "targetType": {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone", "displayOrder": 1},
         "targetValueOne": pace_to_ms(pace_slow_sec_km),
         "targetValueTwo": pace_to_ms(pace_fast_sec_km),
     }
@@ -113,15 +104,10 @@ def step_recovery(order, duration_sec):
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": order,
-        "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery"},
-        "endCondition": {
-            "conditionTypeId": 2,
-            "conditionTypeKey": "time",
-            "conditionValue": str(int(duration_sec)),
-        },
-        "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target"},
-        "targetValueOne": None,
-        "targetValueTwo": None,
+        "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery", "displayOrder": 4},
+        "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time", "displayOrder": 2, "displayable": True},
+        "endConditionValue": float(duration_sec),
+        "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target", "displayOrder": 1},
     }
 
 
@@ -129,12 +115,10 @@ def repeat_group(order, reps, steps):
     return {
         "type": "RepeatGroupDTO",
         "stepOrder": order,
-        "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat"},
-        "endCondition": {
-            "conditionTypeId": 7,
-            "conditionTypeKey": "iterations",
-            "conditionValue": str(reps),
-        },
+        "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6},
+        "numberOfIterations": reps,
+        "endCondition": {"conditionTypeId": 7, "conditionTypeKey": "iterations", "displayOrder": 7, "displayable": False},
+        "endConditionValue": float(reps),
         "smartRepeat": False,
         "workoutSteps": steps,
     }
