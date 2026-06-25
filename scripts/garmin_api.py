@@ -6,8 +6,11 @@ n8n HTTP Request node calls: GET http://garmin-api:8765/fetch
 Auto-saves raw JSON to /training/data/today.json for the Claude Code scheduled agent.
 
 Endpoints:
-  GET /fetch   — run garmin_fetch.py, return JSON, save to /training/data/today.json
-  GET /health  — liveness check
+  GET /fetch                      — run garmin_fetch.py, return JSON
+  GET /push-workout               — push today's planned session to Garmin calendar
+  GET /push-workout?tomorrow=1    — push tomorrow's session instead
+  GET /push-workout?week=6        — override plan week
+  GET /health                     — liveness check
 """
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -23,9 +26,14 @@ DATA_DIR = pathlib.Path("/training/data")
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/fetch":
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(self.path)
+        if parsed.path == "/fetch":
             self._handle_fetch()
-        elif self.path == "/health":
+        elif parsed.path == "/push-workout":
+            params = parse_qs(parsed.query)
+            self._handle_push_workout(params)
+        elif parsed.path == "/health":
             self._respond(200, b'{"status":"ok"}')
         else:
             self._respond(404, b'{"error":"not found"}')
@@ -50,6 +58,29 @@ class Handler(BaseHTTPRequestHandler):
             sys.stderr.write(f"[garmin-api] WARNING: could not save today.json: {e}\n")
 
         self._respond(200, result.stdout.encode())
+
+    def _handle_push_workout(self, params):
+        args = []
+        if params.get("tomorrow", ["0"])[0] == "1":
+            args.append("--tomorrow")
+        if "week" in params:
+            args += ["--week", params["week"][0]]
+        if "type" in params:
+            args += ["--type", params["type"][0]]
+
+        result = subprocess.run(
+            [sys.executable, "/app/garmin_push_workout.py"] + args,
+            capture_output=True,
+            text=True,
+            cwd="/app",
+        )
+        ok = result.returncode == 0
+        body = json.dumps({
+            "ok": ok,
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+        }).encode()
+        self._respond(200 if ok else 500, body)
 
     def _respond(self, code, body):
         self.send_response(code)

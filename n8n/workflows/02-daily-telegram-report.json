@@ -1,0 +1,153 @@
+{
+  "name": "Daily Telegram Coaching Report",
+  "nodes": [
+    {
+      "id": "sticky-setup",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-20, -220],
+      "parameters": {
+        "content": "## Daily Telegram Coaching Report\n\n**Runs at 08:30 Berlin** — 10 min after Claude analysis (08:20).\n\n**Prerequisites:**\n- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in n8n env\n- `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in n8n env\n\n**Flow:** Read Config → Fetch Wellness → Fetch Report → Format → Send",
+        "height": 170,
+        "width": 540,
+        "color": 4
+      }
+    },
+    {
+      "id": "schedule-trigger",
+      "name": "Daily 08:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 60],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 30 8 * * *"
+            }
+          ]
+        },
+        "timezone": "Europe/Berlin"
+      }
+    },
+    {
+      "id": "read-config",
+      "name": "Read Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 60],
+      "parameters": {
+        "jsCode": "const supabaseUrl = $env.SUPABASE_URL || '';\nconst supabaseKey = $env.SUPABASE_SERVICE_KEY || '';\nconst tgToken    = $env.TELEGRAM_BOT_TOKEN || '';\nconst tgChatId   = $env.TELEGRAM_CHAT_ID || '';\n\nif (!supabaseUrl || !supabaseKey) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_KEY not set');\nif (!tgToken || !tgChatId)        throw new Error('TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set');\n\nconst today = new Date().toISOString().slice(0, 10);\n\nreturn [{ json: { supabase_url: supabaseUrl, supabase_key: supabaseKey, tg_token: tgToken, tg_chat_id: tgChatId, today } }];"
+      }
+    },
+    {
+      "id": "fetch-wellness",
+      "name": "Fetch Wellness",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 60],
+      "alwaysOutputData": true,
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Read Config').first().json.supabase_url }}/rest/v1/daily_wellness?date=eq.{{ $('Read Config').first().json.today }}&select=hrv_last_night,hrv_weekly_avg,sleep_duration_h,sleep_score,body_battery_wake,resting_hr,stress_avg",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey",          "value": "={{ $('Read Config').first().json.supabase_key }}"},
+            {"name": "Authorization",   "value": "={{ 'Bearer ' + $('Read Config').first().json.supabase_key }}"},
+            {"name": "Accept-Profile",  "value": "training"},
+            {"name": "Content-Profile", "value": "training"}
+          ]
+        },
+        "options": {"timeout": 10000}
+      }
+    },
+    {
+      "id": "fetch-report",
+      "name": "Fetch Daily Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 60],
+      "alwaysOutputData": true,
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Read Config').first().json.supabase_url }}/rest/v1/daily_reports?date=eq.{{ $('Read Config').first().json.today }}&select=adjustment_type,readiness_score,planned_session,suggested_adjustment,alert_flags,plan_week,biometric_analysis",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "apikey",          "value": "={{ $('Read Config').first().json.supabase_key }}"},
+            {"name": "Authorization",   "value": "={{ 'Bearer ' + $('Read Config').first().json.supabase_key }}"},
+            {"name": "Accept-Profile",  "value": "training"},
+            {"name": "Content-Profile", "value": "training"}
+          ]
+        },
+        "options": {"timeout": 10000}
+      }
+    },
+    {
+      "id": "format-message",
+      "name": "Format Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 60],
+      "parameters": {
+        "jsCode": "// report = {} when daily_reports has no row yet (alwaysOutputData gives empty obj)\nconst report   = $input.first().json ?? {};\nconst wellness = $('Fetch Wellness').first().json ?? {};\nconst cfg      = $('Read Config').first().json;\n\nconst today   = cfg.today;\nconst dateObj = new Date(today + 'T12:00:00');\nconst dayLabel = dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });\n\nconst esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n\nconst typeEmoji = { proceed: '✅', reduce: '🟡', replace: '🔄', rest: '🛑' };\n\nlet text;\n\nif (report.adjustment_type) {\n  // Full coaching report available\n  const emoji    = typeEmoji[report.adjustment_type] || '📋';\n  const adjLabel = report.adjustment_type.toUpperCase();\n\n  const lines = [`<b>🏃 ${dayLabel} — Daily Report</b>`, ''];\n\n  lines.push(`<b>${emoji} ${adjLabel}</b>  (score ${report.readiness_score ?? '?'}/100)`);\n  lines.push('');\n\n  // Biometrics\n  const w = wellness;\n  const bioLines = [];\n  if (w.hrv_last_night != null && w.hrv_weekly_avg != null) {\n    const delta = Math.round((w.hrv_last_night - w.hrv_weekly_avg) / w.hrv_weekly_avg * 100);\n    const sign  = delta >= 0 ? '+' : '';\n    bioLines.push(`HRV ${w.hrv_last_night}ms (${sign}${delta}% vs avg)`);\n  }\n  if (w.sleep_duration_h != null) bioLines.push(`Sleep ${w.sleep_duration_h}h · score ${w.sleep_score ?? '?'}/100`);\n  if (w.body_battery_wake != null) bioLines.push(`Body Battery ${w.body_battery_wake}/100`);\n  if (w.resting_hr != null)       bioLines.push(`Resting HR ${w.resting_hr} bpm`);\n\n  if (bioLines.length) {\n    lines.push('<b>📊 Biometrics</b>');\n    bioLines.forEach(l => lines.push('  ' + esc(l)));\n    lines.push('');\n  }\n\n  if (report.planned_session)     lines.push(`<b>📋 Plan:</b> ${esc(report.planned_session)}`);\n  if (report.suggested_adjustment) lines.push(`<b>💬 Advice:</b> ${esc(report.suggested_adjustment)}`);\n\n  const flags = Array.isArray(report.alert_flags) ? report.alert_flags : [];\n  if (flags.length) {\n    lines.push('');\n    lines.push('⚠️ ' + esc(flags.join(' · ')));\n  }\n\n  lines.push('');\n  lines.push(`<i>Week ${report.plan_week ?? '?'} · ${today}</i>`);\n\n  text = lines.join('\\n');\n\n} else {\n  // No AI report yet — send wellness snapshot only\n  const w = wellness;\n  const lines = [`<b>🏃 ${dayLabel}</b>`, ''];\n\n  if (w.body_battery_wake != null) {\n    lines.push('⏳ <b>Coaching report generating…</b>');\n    lines.push('<i>AI analysis usually ready by 08:30.</i>');\n    lines.push('');\n    lines.push(`Body Battery: ${w.body_battery_wake}/100`);\n    if (w.sleep_duration_h != null) lines.push(`Sleep: ${w.sleep_duration_h}h · score ${w.sleep_score ?? '?'}/100`);\n    if (w.hrv_last_night != null)  lines.push(`HRV: ${w.hrv_last_night}ms`);\n  } else {\n    lines.push('⚠️ No data yet — Garmin sync may not have completed.');\n    lines.push(`<i>${today}</i>`);\n  }\n\n  text = lines.join('\\n');\n}\n\nreturn [{ json: { text, chat_id: cfg.tg_chat_id, tg_token: cfg.tg_token } }];"
+      }
+    },
+    {
+      "id": "send-telegram",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.tg_token }}/sendMessage",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.text, parse_mode: 'HTML' }) }}",
+        "options": {"timeout": 10000}
+      }
+    }
+  ],
+  "connections": {
+    "Daily 08:30": {
+      "main": [[{"node": "Read Config", "type": "main", "index": 0}]]
+    },
+    "Read Config": {
+      "main": [[{"node": "Fetch Wellness", "type": "main", "index": 0}]]
+    },
+    "Fetch Wellness": {
+      "main": [[{"node": "Fetch Daily Report", "type": "main", "index": 0}]]
+    },
+    "Fetch Daily Report": {
+      "main": [[{"node": "Format Telegram Message", "type": "main", "index": 0}]]
+    },
+    "Format Telegram Message": {
+      "main": [[{"node": "Send Telegram", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["garmin", "telegram", "daily"],
+  "triggerCount": 0,
+  "updatedAt": "2026-06-25T00:00:00.000Z",
+  "versionId": "02-daily-telegram-report-v1"
+}
