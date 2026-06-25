@@ -22,8 +22,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-EMAIL    = os.getenv("GARMIN_EMAIL")
-PASSWORD = os.getenv("GARMIN_PASSWORD")
+EMAIL      = os.getenv("GARMIN_EMAIL")
+PASSWORD   = os.getenv("GARMIN_PASSWORD")
+TOKENSTORE = os.getenv("GARMINTOKENS", os.path.expanduser("~/.garth"))
 
 
 def safe_get(fn, *args, default=None):
@@ -45,7 +46,7 @@ def login_with_retry(email, password, retries=3, delay_sec=30):
     for attempt in range(1, retries + 1):
         try:
             client = garminconnect.Garmin(email, password)
-            client.login()
+            client.login(TOKENSTORE)
             return client
         except Exception as e:
             last_err = e

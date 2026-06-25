@@ -29,9 +29,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-EMAIL    = os.getenv("GARMIN_EMAIL")
-PASSWORD = os.getenv("GARMIN_PASSWORD")
+EMAIL      = os.getenv("GARMIN_EMAIL")
+PASSWORD   = os.getenv("GARMIN_PASSWORD")
 PLAN_WEEK_DEFAULT = int(os.getenv("PLAN_WEEK", "5"))
+# Token cache shared with garmin_fetch.py to avoid 429 rate limits.
+# Set GARMINTOKENS in .env to an absolute path, e.g. /Users/you/.garth
+TOKENSTORE = os.getenv("GARMINTOKENS", os.path.expanduser("~/.garth"))
 
 # ── pace/HR helpers ────────────────────────────────────────────────────────────
 
@@ -384,16 +387,9 @@ def push_workout(client: garminconnect.Garmin, workout: dict, target_date: date,
         print(json.dumps(workout, indent=2))
         return True
 
-    # Create workout — garminconnect uses garth for HTTP
+    # Upload workout via library method
     try:
-        result = client.garth.post(
-            "connectapi",
-            "/workout-service/workout",
-            json=workout,
-        )
-        # garth may return dict or Response
-        if hasattr(result, "json"):
-            result = result.json()
+        result = client.upload_workout(workout)
         workout_id = result.get("workoutId")
         if not workout_id:
             print(f"[ERROR] No workoutId in response: {result}", file=sys.stderr)
@@ -405,11 +401,7 @@ def push_workout(client: garminconnect.Garmin, workout: dict, target_date: date,
 
     # Schedule to target date
     try:
-        client.garth.post(
-            "connectapi",
-            f"/workout-service/schedule/{workout_id}",
-            json={"date": str(target_date)},
-        )
+        client.schedule_workout(workout_id, str(target_date))
         print(f"[OK] Scheduled to {target_date}")
     except Exception as e:
         print(f"[WARN] Workout created but scheduling failed: {e}", file=sys.stderr)
@@ -449,10 +441,10 @@ def main():
         if not EMAIL or not PASSWORD:
             print("[ERROR] GARMIN_EMAIL and GARMIN_PASSWORD required", file=sys.stderr)
             return 1
-        print("[INFO] Logging in to Garmin Connect...")
+        print(f"[INFO] Logging in (tokenstore: {TOKENSTORE})...")
         try:
             client = garminconnect.Garmin(EMAIL, PASSWORD)
-            client.login()
+            client.login(TOKENSTORE)  # loads cached tokens if available, saves after fresh login
         except Exception as e:
             print(f"[ERROR] Login failed: {e}", file=sys.stderr)
             return 1
